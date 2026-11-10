@@ -1,13 +1,21 @@
 # Team Project
 
-Please keep this up-to-date with information about your project throughout the term.
+The Application is designed to allow the user to play poker against a computer opponent.
 
-The readme should include information such as:
-- a summary of what your application is all about
-- a list of the user stories, along with who is responsible for each one
-- information about the API(s) that your project uses 
-- screenshots or animations demonstrating current functionality
+## User Stories, APIs
 
-By keeping this README up-to-date,
-your team will find it easier to prepare for the final presentation
-at the end of the term.
+### User Stories
+
+* I want to be able to play a game against the computer
+
+* I want to be able to modify the behaviour of the computer
+
+* I want to be able to review my previous games so I can see how to improve
+
+* I want to be able to input a specific scenario and see the winning chance
+
+### APIs
+
+* Equity/poker computer (Please update with more accurate information when we are further into the project)
+
+## Screenshots
