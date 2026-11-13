@@ -192,8 +192,9 @@ Requirements: JDK 11 or newer, and Maven (bundled with IntelliJ IDEA).
 1. Clone the repository and open it in IntelliJ IDEA as a Maven project.
 2. Run `app.Main`.
 
-The application is still under development; `app.Main` does not start a
-playable game yet.
+The application is still under development. The rules of the game, hand
+comparison, and the chance of winning are implemented; the screens and the use
+cases are not, so `app.Main` does not start a playable game yet.
 
 ---
 

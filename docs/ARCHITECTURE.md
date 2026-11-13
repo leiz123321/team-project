@@ -1,8 +1,10 @@
 # Architecture
 
-> **Status: draft proposal, not yet agreed by the team.**
-> Nothing here is implemented except the package skeleton on `main` and the
-> `Card` / `Deck` entities in PR #4. Items marked **(decision needed)** are open.
+> **Status: the design is a proposal, not yet agreed by the whole team.**
+> Implemented so far: the package structure and the whole entity layer (§5, §6).
+> The use case packages are empty, and the classes in `app`,
+> `interface_adapter`, `data_access`, and `view` are empty skeletons.
+> Items marked **(decision needed)** are open.
 
 This document describes how the poker application is organised so that it
 follows Clean Architecture (CA) as taught in CSC207 (course notes ch. 10–11,
@@ -181,8 +183,9 @@ src/main/java/
     └── EquityView.java
 
 src/test/java/
-├── entity/                               one test class per entity
-└── use_case/<name>/                      one test class per interactor
+├── entity/                               one test class per entity (not written yet)
+│   └── PreflopEquityTableGenerator.java  produces the numbers in PreflopEquityTable
+└── use_case/<name>/                      one test class per interactor (not written yet)
 ```
 
 Every `use_case/<name>/` package has the same kinds of file, shown here for
@@ -201,9 +204,8 @@ Every `use_case/<name>/` package has the same kinds of file, shown here for
 Every `interface_adapter/<name>/` package has `<Name>Controller`,
 `<Name>Presenter`, `<Name>ViewModel`, and `<Name>State`.
 
-The placeholder files `exampleclass_data_access`, `exampleclass_interface_adapter`,
-and `exampleclass_use_case` should be deleted once real classes exist, and a
-`view` package added.
+Every package has a `package-info.java` that states what belongs in it and
+what it may depend on.
 
 ## 6. Entities
 
@@ -260,7 +262,7 @@ by `PreflopEquityTableGenerator` (in the test sources) from 20 million random
 deals per entry with a fixed seed.
 
 The method on `Player` is the entry point, `player.winChance(board)`. The
-simulation and hand comparison themselves live in `EquityCalculator`, which the
+counting and hand comparison themselves live in `EquityCalculator`, which the
 method calls, so `Player` stays small and the algorithm can be tested on its own.
 
 The computer opponent has two sources of decisions. The main one is the LLM
@@ -490,7 +492,7 @@ patterns count needs to be checked against the lecture list.
 
 | Milestone | Due | Architecture work |
 |---|---|---|
-| 1 | Fri Nov 13 | Agree on §1 and §3; move use cases and the MVP table into the README; finish `Card`, `Deck`, `Player`, `Action`, `Game`, `HandEvaluator`; first interactor and view stubs |
+| 1 | Fri Nov 13 | Agree on §1 and §3; use cases and the MVP table in the README; entity layer implemented; first interactor and view stubs |
 | 2 | Fri Nov 20 | One use case working end to end (UC1 is the smallest); `AppBuilder`; a runnable call to the chosen API; each member has a substantial PR and a review |
 | 3 | Fri Nov 27 | All five use cases integrated; one unit test per interactor |
 | 4 | Fri Dec 4 | 100% line coverage of `entity` and `use_case`; Checkstyle evidence; diagrams for the slides |
