@@ -103,11 +103,22 @@ of one user story.
 
 ### Card
 
-One playing card, with a rank and a suit.
+One playing card, with a rank and a suit. A card also knows where it currently
+is: in the deck, in a player's hand, face down among the community cards, or
+face up among the community cards.
 
 ### Deck
 
 The 52 distinct cards. It can be shuffled and dealt from.
+
+### HoleCards
+
+The two private cards held by one player.
+
+### Board
+
+The five community cards of a hand. They start face down and are turned face
+up in three steps: the flop, the turn, and the river.
 
 ### HandValue
 

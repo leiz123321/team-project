@@ -133,11 +133,15 @@ src/main/java/
 │   └── AppBuilder.java                   creates and connects views, use cases, DAOs
 ├── entity/
 │   ├── Rank.java, Suit.java              enums
+│   ├── CardState.java                    enum: where a card currently is
 │   ├── Card.java, Deck.java
+│   ├── HoleCards.java                    one player's two cards
+│   ├── Board.java                        the five community cards
 │   ├── HandCategory.java                 enum: HIGH_CARD ... STRAIGHT_FLUSH
 │   ├── HandValue.java                    comparable strength of a 5-card hand
 │   ├── HandEvaluator.java                best 5 of 7 cards
 │   ├── EquityCalculator.java             chance of winning from the visible cards
+│   ├── EquityResult.java                 chances of winning, tying, and losing
 │   ├── Player.java
 │   ├── ActionType.java, Action.java
 │   ├── Street.java                       enum: PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
@@ -205,25 +209,28 @@ and `exampleclass_use_case` should be deleted once real classes exist, and a
 | Entity | Data | Rules it enforces |
 |---|---|---|
 | `Rank`, `Suit` | enum constants | Only 13 ranks and 4 suits exist; ranks are ordered from `TWO` up to `ACE`, suits have no order |
-| `Card` | rank, suit | Immutable; two cards are equal when rank and suit both match. `Card` has no ordering of its own: cards are sorted by comparing `Rank`, and hands are compared through `HandValue` |
-| `Deck` | remaining cards | 52 distinct cards; `shuffle(Random)`; `deal()` removes the top card and fails when empty |
+| `CardState` | enum constants | A card is in the deck, in a hand, a face-down community card, or a face-up community card |
+| `Card` | rank, suit, state | Rank and suit never change. The state changes only through `dealToHand()`, `dealToBoard()`, `reveal()`, and `returnToDeck()`, each of which rejects a move that is not allowed from the current state. Two cards are equal when rank and suit both match; the state is not compared. `Card` has no ordering of its own: cards are sorted by comparing `Rank`, and hands are compared through `HandValue` |
+| `Deck` | all 52 cards, position of the next card to deal | 52 distinct cards, created once and kept for the whole game; `shuffle(Random)`; dealing changes the card's state instead of removing it and fails when no cards are left; `cardsIn(CardState)` lists the cards in a given state |
+| `HoleCards` | two cards | Exactly two different cards, both dealt to a hand |
+| `Board` | five cards | Five different cards dealt face down; revealed only in the order flop, turn, river; only the revealed cards can be read |
 | `HandValue` | category, tie-break ranks | Total ordering of 5-card hands |
 | `HandEvaluator` | none | Best 5-card hand out of 5 to 7 cards |
-| `Player` | name, stack, hole cards, folded flag | Cannot bet more than the stack; stack never negative. Computes its own chance of winning from the cards it can see (its hole cards and the revealed community cards) and from nothing else |
+| `Player` | name, stack, `HoleCards`, folded flag | Cannot bet more than the stack; stack never negative. `winChance(board)` gives its chances of winning, tying, and losing from the cards it can see (its hole cards and the revealed community cards) and from nothing else |
 | `Action` | type, amount | Amount present only for bet and raise |
-| `Game` | deck, two players, board, pot, street, current bet, whose turn, the `BotProfile` in force for this hand | Which actions are legal; minimum raise; when a street ends; who wins the pot |
-| `HandRecord` | id, timestamp, hole cards, board, ordered actions, winner, chip change | Immutable once created |
-| `EquityCalculator` | none | Win, tie, and loss chances given hole cards and revealed community cards; every other card is treated as unknown |
-| `BotProfile` | playing style, numeric parameters | Parameters stay inside their allowed ranges |
-| `DecisionContext` | hole cards, board, pot, amount to call, legal actions, betting so far | Holds only what the computer player can see |
+| `Game` | two players, `Board`, pot, street, bets in the current round, whose turn, log of events | One hand of heads-up No-Limit Texas Hold'em. Both players need at least the big blind to start. Decides which actions are legal, the minimum raise, when a betting round ends, and who wins the pot; returns the unmatched part of a bet when a player is all-in for less; runs out the board when a player is all-in; gives an odd chip of a split pot to the big blind |
+| `HandRecord` | id, timestamp, player names, hole cards, board, ordered events, winner, chip changes | Immutable once created. Cards are stored as text, so a record does not change when the same cards are dealt again |
+| `EquityCalculator` | none | Win, tie, and loss chances given hole cards and revealed community cards; every other card is treated as unknown. Exact from the turn on, an estimate before it |
+| `EquityResult` | win, tie, lose | Each chance is between 0 and 1 |
+| `BotProfile` | playing style name, aggression | Aggression stays between 0 and 1 |
+| `DecisionContext` | hole cards, revealed board, pot, amount to call, legal actions, smallest and largest bet or raise, chance of winning | Holds only what the computer player can see |
 | `BotStrategy` | none (interface) | The built-in opponent: `Action decide(DecisionContext)` returns a legal action without any network access |
 
-Notes on the entities already in PR #4:
-
-- `Card` uses `int` for rank and suit. Enums are recommended instead: invalid
-  values become impossible, the range check and the symbol `switch` both go away.
-- `Deck.shuffle` should take a `java.util.Random` so tests can pass a seeded one.
-- `Deck.getCards()` should not expose the internal array.
+Where a card is during a hand is recorded on the card itself, as its
+`CardState`. `Deck`, `HoleCards`, and `Board` all hold references to the same
+52 `Card` objects; dealing and revealing move a card from one state to the
+next. Because the cards are reused from hand to hand, anything that must
+outlive a hand, such as `HandRecord`, stores card text and not the cards.
 
 The chance of winning is always computed from one player's point of view, as
 a method of `Player`. It takes the revealed community cards as its argument
@@ -232,6 +239,13 @@ cards or cards that have not been dealt. UC5 uses the same method: the
 interactor builds a `Player` holding the hole cards the user entered, together
 with the community cards the user entered, and asks that player for its chance
 of winning. The computation is local and needs no network access.
+
+The opponent is assumed to hold any two of the unknown cards with equal
+likelihood. On the river there are 990 possible opponent hands, and on the
+turn 46 possible river cards with 990 hands each, so `EquityCalculator` counts
+every case and the result is exact. On the flop and before it there are too
+many cases to count quickly, so it draws the unknown cards at random (2000
+times by default) and the result is an estimate.
 
 The method on `Player` is the entry point, `player.winChance(board)`. The
 simulation and hand comparison themselves live in `EquityCalculator`, which the
@@ -250,7 +264,7 @@ player can see.
 
 1. `GameTableView` handles the button click and calls `PlayerActionController.execute(type, amount)`.
 2. The controller builds `PlayerActionInputData` and calls `PlayerActionInputBoundary.execute`.
-3. `PlayerActionInteractor` gets the current `Game` through `PlayerActionGameDataAccessInterface`. The `Game` carries the `BotProfile` that UC1 loaded when the hand started.
+3. `PlayerActionInteractor` gets the current `Game` through `PlayerActionGameDataAccessInterface`.
 4. It asks `Game` whether the action is legal. If not, it calls `prepareFailView` and stops.
 5. It applies the action, then asks `PlayerActionOpponentDataAccessInterface` for the computer's action. If that call fails, or the returned action is not legal, it asks the built-in `BotStrategy` instead. It applies the computer's action and advances the street if the round is over.
 6. If the hand is over it builds a `HandRecord` and saves it through `PlayerActionHistoryDataAccessInterface`.
@@ -368,7 +382,7 @@ class may implement several of them.
 |---|---|---|
 | `InMemoryGameSessionDataAccessObject` | `start_hand`, `player_action` | Holds the current `Game` while the program runs |
 | `FileHandHistoryDataAccessObject` | `player_action` (save), `view_history` (load) | `data/hand_history.json` |
-| `FileBotProfileDataAccessObject` | `configure_bot` (save, load), `start_hand` (load) | `data/bot_profile.json` |
+| `FileBotProfileDataAccessObject` | `configure_bot` (save, load), `player_action` (load) | `data/bot_profile.json` |
 | `LlmOpponentDataAccessObject` | `player_action` (the computer's decision) | HTTP request to the LLM API |
 | `InMemoryHandHistoryDataAccessObject` | same as the file version | Used in unit tests |
 
@@ -476,4 +490,4 @@ patterns count needs to be checked against the lecture list.
 2. Which LLM provider to use, and confirmation from the TA that an LLM API is allowed.
 3. Who leads which use case.
 4. JSON and HTTP libraries.
-5. Whether `Card` switches to enums before more code depends on it.
+5. Unit tests and Checkstyle for the entity layer.
