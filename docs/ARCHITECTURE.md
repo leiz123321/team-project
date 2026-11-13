@@ -142,6 +142,7 @@ src/main/java/
 │   ├── HandEvaluator.java                best 5 of 7 cards
 │   ├── EquityCalculator.java             chance of winning from the visible cards
 │   ├── EquityResult.java                 chances of winning, tying, and losing
+│   ├── PreflopEquityTable.java           chances before the flop for the 169 starting hands
 │   ├── Player.java
 │   ├── ActionType.java, Action.java
 │   ├── Street.java                       enum: PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
@@ -215,12 +216,13 @@ and `exampleclass_use_case` should be deleted once real classes exist, and a
 | `HoleCards` | two cards | Exactly two different cards, both dealt to a hand |
 | `Board` | five cards | Five different cards dealt face down; revealed only in the order flop, turn, river; only the revealed cards can be read |
 | `HandValue` | category, tie-break ranks | Total ordering of 5-card hands |
-| `HandEvaluator` | none | Best 5-card hand out of 5 to 7 cards |
+| `HandEvaluator` | none | Best 5-card hand out of 5 to 7 cards. Also gives the strength as a single number, for code that compares very many hands |
 | `Player` | name, stack, `HoleCards`, folded flag | Cannot bet more than the stack; stack never negative. `winChance(board)` gives its chances of winning, tying, and losing from the cards it can see (its hole cards and the revealed community cards) and from nothing else |
 | `Action` | type, amount | Amount present only for bet and raise |
 | `Game` | two players, `Board`, pot, street, bets in the current round, whose turn, log of events | One hand of heads-up No-Limit Texas Hold'em. Both players need at least the big blind to start. Decides which actions are legal, the minimum raise, when a betting round ends, and who wins the pot; returns the unmatched part of a bet when a player is all-in for less; runs out the board when a player is all-in; gives an odd chip of a split pot to the big blind |
 | `HandRecord` | id, timestamp, player names, hole cards, board, ordered events, winner, chip changes | Immutable once created. Cards are stored as text, so a record does not change when the same cards are dealt again |
-| `EquityCalculator` | none | Win, tie, and loss chances given hole cards and revealed community cards; every other card is treated as unknown. Exact from the turn on, an estimate before it |
+| `EquityCalculator` | none | Win, tie, and loss chances given hole cards and revealed community cards; every other card is treated as unknown. Exact from the flop on; before the flop it reads `PreflopEquityTable` |
+| `PreflopEquityTable` | win and tie chances for the 169 kinds of starting hand | Worked out ahead of time by simulation; each number is accurate to about 0.0003 |
 | `EquityResult` | win, tie, lose | Each chance is between 0 and 1 |
 | `BotProfile` | playing style name, aggression | Aggression stays between 0 and 1 |
 | `DecisionContext` | hole cards, revealed board, pot, amount to call, legal actions, smallest and largest bet or raise, chance of winning | Holds only what the computer player can see |
@@ -241,11 +243,21 @@ with the community cards the user entered, and asks that player for its chance
 of winning. The computation is local and needs no network access.
 
 The opponent is assumed to hold any two of the unknown cards with equal
-likelihood. On the river there are 990 possible opponent hands, and on the
-turn 46 possible river cards with 990 hands each, so `EquityCalculator` counts
-every case and the result is exact. On the flop and before it there are too
-many cases to count quickly, so it draws the unknown cards at random (2000
-times by default) and the result is an estimate.
+likelihood. How the chances are worked out depends on the betting round:
+
+| Round | Method | Cases | Time measured |
+|---|---|---|---|
+| Before the flop | Look up `PreflopEquityTable` | 169 entries | immediate |
+| Flop | Count every case | 1081 × 990 = 1,070,190 | about 40 ms |
+| Turn | Count every case | 46 × 990 = 45,540 | about 2 ms |
+| River | Count every case | 990 | under 1 ms |
+
+From the flop on the result is exact. Before the flop there are about two
+billion cases per hand, too many to count during a game, but the chances then
+depend only on the two ranks and whether the cards share a suit, so a table of
+169 entries covers every starting hand. The table was produced ahead of time
+by `PreflopEquityTableGenerator` (in the test sources) from 20 million random
+deals per entry with a fixed seed.
 
 The method on `Player` is the entry point, `player.winChance(board)`. The
 simulation and hand comparison themselves live in `EquityCalculator`, which the
