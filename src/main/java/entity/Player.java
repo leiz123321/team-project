@@ -113,12 +113,13 @@ public class Player {
     }
 
     /**
-     * Estimates this player's chances of winning, tying, and losing from the
+     * Works out this player's chances of winning, tying, and losing from the
      * cards this player can see: their own hole cards and the revealed
-     * community cards. Nothing else is used.
+     * community cards. Nothing else is used. The result is exact once the turn
+     * has been revealed and an estimate before that.
      *
      * @param board the community cards of the current hand
-     * @return the estimated chances
+     * @return the chances
      * @throws IllegalStateException if the player has no hole cards
      */
     public EquityResult winChance(Board board) {
@@ -131,7 +132,7 @@ public class Player {
      *
      * @param board the community cards of the current hand
      * @param calculator the calculator to use
-     * @return the estimated chances
+     * @return the chances
      * @throws IllegalStateException if the player has no hole cards
      */
     public EquityResult winChance(Board board, EquityCalculator calculator) {
