@@ -1,11 +1,9 @@
 package entity;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 
 /**
  * Works out the chances of winning, tying, and losing from the cards one
@@ -13,55 +11,30 @@ import java.util.Set;
  * Every other card is treated as unknown, and the opponent is assumed to hold
  * any two of the unknown cards with equal likelihood.
  *
- * <p>With four or five community cards revealed, every possible opponent hand
- * and remaining community card is counted, so the result is exact. With fewer
- * revealed there are too many possibilities to count, so the unknown cards are
- * drawn at random many times and the result is an estimate.
+ * <p>Once the flop is revealed, every possible outcome is counted, so the
+ * result is exact: 1081 turn-and-river pairs with 990 opponent hands each on
+ * the flop, 46 river cards with 990 opponent hands each on the turn, and 990
+ * opponent hands on the river. Before the flop there are about two billion
+ * outcomes, too many to count each time, so the result is looked up in
+ * {@link PreflopEquityTable}.
  */
 public class EquityCalculator {
-    /** How many random deals are tried before the turn when no number is given. */
-    public static final int DEFAULT_ITERATIONS = 2000;
-
+    private static final int DECK_SIZE = 52;
     private static final int HOLE_SIZE = 2;
     private static final int BOARD_SIZE = 5;
     private static final int FLOP_SIZE = 3;
     private static final int TURN_SIZE = 4;
+    private static final int SEVEN = 7;
     private static final int OUTCOMES = 3;
     private static final int WIN = 0;
     private static final int TIE = 1;
     private static final int LOSE = 2;
 
-    private final Random random;
-    private final int iterations;
     private final HandEvaluator evaluator = new HandEvaluator();
+    private final PreflopEquityTable preflopTable = new PreflopEquityTable();
 
     /**
-     * Creates a calculator with a new source of randomness and the default
-     * number of random deals.
-     */
-    public EquityCalculator() {
-        this(new Random(), DEFAULT_ITERATIONS);
-    }
-
-    /**
-     * Creates a calculator.
-     *
-     * @param random the source of randomness; pass a seeded one in tests
-     * @param iterations how many random deals to try when the result is estimated
-     * @throws IllegalArgumentException if random is null or iterations is not positive
-     */
-    public EquityCalculator(Random random, int iterations) {
-        if (random == null || iterations <= 0) {
-            throw new IllegalArgumentException("random must not be null and iterations must be positive");
-        }
-        this.random = random;
-        this.iterations = iterations;
-    }
-
-    /**
-     * Works out the chances of winning, tying, and losing against one opponent:
-     * exactly when four or five community cards are revealed, and as an
-     * estimate otherwise.
+     * Works out the chances of winning, tying, and losing against one opponent.
      *
      * @param holeCards the player's two hole cards
      * @param boardCards the revealed community cards: none, three, four, or five
@@ -71,93 +44,150 @@ public class EquityCalculator {
      */
     public EquityResult calculate(List<Card> holeCards, List<Card> boardCards) {
         validate(holeCards, boardCards);
-
-        Set<Card> known = new HashSet<>(holeCards);
-        known.addAll(boardCards);
-        List<Card> unknown = new ArrayList<>();
-        for (Suit suit : Suit.values()) {
-            for (Rank rank : Rank.values()) {
-                Card card = new Card(rank, suit);
-                if (!known.contains(card)) {
-                    unknown.add(card);
-                }
-            }
+        if (boardCards.isEmpty()) {
+            return this.preflopTable.lookup(holeCards.get(0), holeCards.get(1));
         }
-
-        if (boardCards.size() >= TURN_SIZE) {
-            return countAll(holeCards, boardCards, unknown);
-        }
-        return simulate(holeCards, boardCards, unknown);
+        return countAll(holeCards, boardCards);
     }
 
     /**
-     * Counts every possible outcome: each remaining community card, if one is
-     * still to come, with each pair of unknown cards the opponent could hold.
+     * Estimates the chances by dealing the unknown cards at random many times.
+     * {@link #calculate(List, List)} does not use this; it is how the table of
+     * chances before the flop was produced, and a way to cross-check the exact
+     * results.
+     *
+     * @param holeCards the player's two hole cards
+     * @param boardCards the revealed community cards: none, three, four, or five
+     * @param random the source of randomness
+     * @param iterations how many random deals to try
+     * @return the estimated chances
+     * @throws IllegalArgumentException if the cards are not valid, random is
+     *         null, or iterations is not positive
      */
-    private EquityResult countAll(List<Card> holeCards, List<Card> boardCards, List<Card> unknown) {
-        int[] tally = new int[OUTCOMES];
-        if (boardCards.size() == BOARD_SIZE) {
-            countOpponentHands(holeCards, boardCards, unknown, null, tally);
+    public EquityResult simulate(List<Card> holeCards, List<Card> boardCards, Random random,
+                                 int iterations) {
+        validate(holeCards, boardCards);
+        if (random == null || iterations <= 0) {
+            throw new IllegalArgumentException("random must not be null and iterations must be positive");
+        }
+        int[] mine = new int[SEVEN];
+        int[] theirs = new int[SEVEN];
+        int[] unknown = prepare(holeCards, boardCards, mine, theirs);
+        int firstMissing = HOLE_SIZE + boardCards.size();
+        int drawn = HOLE_SIZE + SEVEN - firstMissing;
+
+        long[] tally = new long[OUTCOMES];
+        for (int i = 0; i < iterations; i++) {
+            // Move a random selection of the unknown cards to the front.
+            for (int k = 0; k < drawn; k++) {
+                int other = k + random.nextInt(unknown.length - k);
+                int swapped = unknown[k];
+                unknown[k] = unknown[other];
+                unknown[other] = swapped;
+            }
+            theirs[0] = unknown[0];
+            theirs[1] = unknown[1];
+            for (int k = firstMissing; k < SEVEN; k++) {
+                int card = unknown[HOLE_SIZE + k - firstMissing];
+                mine[k] = card;
+                theirs[k] = card;
+            }
+            record(this.evaluator.score(mine, SEVEN), this.evaluator.score(theirs, SEVEN), tally);
+        }
+        return toResult(tally);
+    }
+
+    /**
+     * Counts every possible outcome: each way the community cards can be
+     * completed, with each pair of unknown cards the opponent could hold.
+     */
+    private EquityResult countAll(List<Card> holeCards, List<Card> boardCards) {
+        int[] mine = new int[SEVEN];
+        int[] theirs = new int[SEVEN];
+        int[] unknown = prepare(holeCards, boardCards, mine, theirs);
+        long[] tally = new long[OUTCOMES];
+
+        int missing = BOARD_SIZE - boardCards.size();
+        if (missing == 0) {
+            countOpponentHands(mine, theirs, unknown, -1, -1, tally);
+        }
+        else if (missing == 1) {
+            for (int i = 0; i < unknown.length; i++) {
+                mine[SEVEN - 1] = unknown[i];
+                theirs[SEVEN - 1] = unknown[i];
+                countOpponentHands(mine, theirs, unknown, i, -1, tally);
+            }
         }
         else {
-            for (Card river : unknown) {
-                List<Card> fullBoard = new ArrayList<>(boardCards);
-                fullBoard.add(river);
-                countOpponentHands(holeCards, fullBoard, unknown, river, tally);
+            for (int i = 0; i < unknown.length; i++) {
+                for (int j = i + 1; j < unknown.length; j++) {
+                    mine[SEVEN - 2] = unknown[i];
+                    theirs[SEVEN - 2] = unknown[i];
+                    mine[SEVEN - 1] = unknown[j];
+                    theirs[SEVEN - 1] = unknown[j];
+                    countOpponentHands(mine, theirs, unknown, i, j, tally);
+                }
             }
         }
         return toResult(tally);
     }
 
-    private void countOpponentHands(List<Card> holeCards, List<Card> fullBoard, List<Card> unknown,
-                                    Card excluded, int[] tally) {
-        List<Card> mine = new ArrayList<>(holeCards);
-        mine.addAll(fullBoard);
-        HandValue myValue = this.evaluator.evaluate(mine);
-        for (int i = 0; i < unknown.size(); i++) {
-            for (int j = i + 1; j < unknown.size(); j++) {
-                Card first = unknown.get(i);
-                Card second = unknown.get(j);
-                if (first.equals(excluded) || second.equals(excluded)) {
+    /**
+     * For one complete set of community cards, compares the player's hand with
+     * every pair of unknown cards the opponent could hold. The two skipped
+     * positions are the unknown cards already used as community cards.
+     */
+    private void countOpponentHands(int[] mine, int[] theirs, int[] unknown,
+                                    int skipFirst, int skipSecond, long[] tally) {
+        int myScore = this.evaluator.score(mine, SEVEN);
+        for (int a = 0; a < unknown.length; a++) {
+            if (a == skipFirst || a == skipSecond) {
+                continue;
+            }
+            theirs[0] = unknown[a];
+            for (int b = a + 1; b < unknown.length; b++) {
+                if (b == skipFirst || b == skipSecond) {
                     continue;
                 }
-                List<Card> theirs = new ArrayList<>(fullBoard);
-                theirs.add(first);
-                theirs.add(second);
-                record(myValue.compareTo(this.evaluator.evaluate(theirs)), tally);
+                theirs[1] = unknown[b];
+                record(myScore, this.evaluator.score(theirs, SEVEN), tally);
             }
         }
     }
 
     /**
-     * Draws the opponent's hand and the remaining community cards at random
-     * many times and counts the outcomes.
+     * Puts the known cards into the two seven-card hands (hole cards in the
+     * first two places, community cards after them) and returns the unknown
+     * cards.
      */
-    private EquityResult simulate(List<Card> holeCards, List<Card> boardCards, List<Card> unknown) {
-        int missing = BOARD_SIZE - boardCards.size();
-        int[] tally = new int[OUTCOMES];
-        for (int i = 0; i < this.iterations; i++) {
-            Collections.shuffle(unknown, this.random);
-            List<Card> restOfBoard = unknown.subList(HOLE_SIZE, HOLE_SIZE + missing);
-
-            List<Card> mine = new ArrayList<>(holeCards);
-            mine.addAll(boardCards);
-            mine.addAll(restOfBoard);
-
-            List<Card> theirs = new ArrayList<>(unknown.subList(0, HOLE_SIZE));
-            theirs.addAll(boardCards);
-            theirs.addAll(restOfBoard);
-
-            record(this.evaluator.evaluate(mine).compareTo(this.evaluator.evaluate(theirs)), tally);
+    private int[] prepare(List<Card> holeCards, List<Card> boardCards, int[] mine, int[] theirs) {
+        boolean[] known = new boolean[DECK_SIZE];
+        for (int i = 0; i < HOLE_SIZE; i++) {
+            mine[i] = HandEvaluator.codeOf(holeCards.get(i));
+            known[mine[i]] = true;
         }
-        return toResult(tally);
+        for (int i = 0; i < boardCards.size(); i++) {
+            int code = HandEvaluator.codeOf(boardCards.get(i));
+            mine[HOLE_SIZE + i] = code;
+            theirs[HOLE_SIZE + i] = code;
+            known[code] = true;
+        }
+        int[] unknown = new int[DECK_SIZE - HOLE_SIZE - boardCards.size()];
+        int next = 0;
+        for (int code = 0; code < DECK_SIZE; code++) {
+            if (!known[code]) {
+                unknown[next] = code;
+                next++;
+            }
+        }
+        return unknown;
     }
 
-    private void record(int comparison, int[] tally) {
-        if (comparison > 0) {
+    private void record(int myScore, int theirScore, long[] tally) {
+        if (myScore > theirScore) {
             tally[WIN]++;
         }
-        else if (comparison == 0) {
+        else if (myScore == theirScore) {
             tally[TIE]++;
         }
         else {
@@ -165,7 +195,7 @@ public class EquityCalculator {
         }
     }
 
-    private EquityResult toResult(int[] tally) {
+    private EquityResult toResult(long[] tally) {
         double total = tally[WIN] + tally[TIE] + tally[LOSE];
         return new EquityResult(tally[WIN] / total, tally[TIE] / total, tally[LOSE] / total);
     }

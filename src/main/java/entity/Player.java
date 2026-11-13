@@ -115,8 +115,9 @@ public class Player {
     /**
      * Works out this player's chances of winning, tying, and losing from the
      * cards this player can see: their own hole cards and the revealed
-     * community cards. Nothing else is used. The result is exact once the turn
-     * has been revealed and an estimate before that.
+     * community cards. Nothing else is used. The result is exact once the flop
+     * has been revealed; before the flop it comes from a table worked out ahead
+     * of time.
      *
      * @param board the community cards of the current hand
      * @return the chances
@@ -128,7 +129,7 @@ public class Player {
 
     /**
      * Same as {@link #winChance(Board)}, with the calculator supplied by the
-     * caller so that tests can make the result repeatable.
+     * caller.
      *
      * @param board the community cards of the current hand
      * @param calculator the calculator to use

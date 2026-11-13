@@ -6,13 +6,37 @@ import java.util.List;
 
 /**
  * Finds the best five-card poker hand among five to seven cards.
+ *
+ * <p>The strength of a hand is first worked out as a single number, so that
+ * comparing two hands is comparing two numbers. {@link #evaluate(List)} turns
+ * that number into a {@link HandValue}; code that compares a very large number
+ * of hands can use {@link #score(int[], int)} directly.
  */
 public class HandEvaluator {
+    private static final int RANKS = 13;
+    private static final int SUITS = 4;
     private static final int HAND_SIZE = 5;
     private static final int MAX_CARDS = 7;
+    private static final int SLOTS = 5;
+    private static final int SLOT_BITS = 4;
+    private static final int SLOT_MASK = 0xF;
+    private static final int CATEGORY_SHIFT = SLOTS * SLOT_BITS;
+    private static final int STRAIGHT_MASK = 0x1F;
+    private static final int WHEEL_MASK = 0x100F;
+    private static final int FIVE_ORDINAL = Rank.FIVE.ordinal();
     private static final int FOUR = 4;
     private static final int THREE = 3;
     private static final int TWO = 2;
+
+    /**
+     * Returns the number that stands for a card in {@link #score(int[], int)}.
+     *
+     * @param card the card
+     * @return a number from 0 to 51
+     */
+    public static int codeOf(Card card) {
+        return card.getSuit().ordinal() * RANKS + card.getRank().ordinal();
+    }
 
     /**
      * Returns the value of the best five-card hand that can be made from the
@@ -30,99 +54,165 @@ public class HandEvaluator {
         if (cards.contains(null) || new HashSet<>(cards).size() != cards.size()) {
             throw new IllegalArgumentException("cards must be different and not null");
         }
-        HandValue best = null;
-        int n = cards.size();
-        for (int a = 0; a < n; a++) {
-            for (int b = a + 1; b < n; b++) {
-                for (int c = b + 1; c < n; c++) {
-                    for (int d = c + 1; d < n; d++) {
-                        for (int e = d + 1; e < n; e++) {
-                            HandValue value = evaluateFive(List.of(
-                                    cards.get(a), cards.get(b), cards.get(c), cards.get(d), cards.get(e)));
-                            if (best == null || value.compareTo(best) > 0) {
-                                best = value;
-                            }
-                        }
-                    }
-                }
-            }
+        int[] codes = new int[cards.size()];
+        for (int i = 0; i < codes.length; i++) {
+            codes[i] = codeOf(cards.get(i));
         }
-        return best;
-    }
-
-    private HandValue evaluateFive(List<Card> five) {
-        Rank[] ranks = Rank.values();
-        int[] counts = new int[ranks.length];
-        boolean flush = true;
-        Suit firstSuit = five.get(0).getSuit();
-        for (Card card : five) {
-            counts[card.getRank().ordinal()]++;
-            if (card.getSuit() != firstSuit) {
-                flush = false;
-            }
-        }
-
-        // Ranks that appear more often come first; equal counts go from high to low.
-        List<Rank> ordered = new ArrayList<>();
-        for (int count = FOUR; count >= 1; count--) {
-            for (int i = ranks.length - 1; i >= 0; i--) {
-                if (counts[i] == count) {
-                    ordered.add(ranks[i]);
-                }
-            }
-        }
-        int mostCommon = counts[ordered.get(0).ordinal()];
-        int distinct = ordered.size();
-        Rank straightHigh = straightHigh(ordered);
-
-        HandValue value;
-        if (straightHigh != null && flush) {
-            value = new HandValue(HandCategory.STRAIGHT_FLUSH, List.of(straightHigh));
-        }
-        else if (mostCommon == FOUR) {
-            value = new HandValue(HandCategory.FOUR_OF_A_KIND, ordered);
-        }
-        else if (mostCommon == THREE && distinct == TWO) {
-            value = new HandValue(HandCategory.FULL_HOUSE, ordered);
-        }
-        else if (flush) {
-            value = new HandValue(HandCategory.FLUSH, ordered);
-        }
-        else if (straightHigh != null) {
-            value = new HandValue(HandCategory.STRAIGHT, List.of(straightHigh));
-        }
-        else if (mostCommon == THREE) {
-            value = new HandValue(HandCategory.THREE_OF_A_KIND, ordered);
-        }
-        else if (mostCommon == TWO && distinct == THREE) {
-            value = new HandValue(HandCategory.TWO_PAIR, ordered);
-        }
-        else if (mostCommon == TWO) {
-            value = new HandValue(HandCategory.PAIR, ordered);
-        }
-        else {
-            value = new HandValue(HandCategory.HIGH_CARD, ordered);
-        }
-        return value;
+        return toHandValue(score(codes, codes.length));
     }
 
     /**
-     * Returns the highest rank of the straight made by these ranks, or null if
-     * they do not make a straight. In A-2-3-4-5 the ace is low, so the highest
+     * Returns the strength of the best five-card hand among the given cards as
+     * one number: a stronger hand always has a larger number, and hands that
+     * tie have the same number. The cards are not checked.
+     *
+     * @param codes the cards, each as returned by {@link #codeOf(Card)}
+     * @param count how many entries of codes to use, from 5 to 7
+     * @return the strength of the best hand
+     */
+    public int score(int[] codes, int count) {
+        int[] rankCounts = new int[RANKS];
+        int[] suitCounts = new int[SUITS];
+        int[] suitMasks = new int[SUITS];
+        int rankMask = 0;
+        for (int i = 0; i < count; i++) {
+            int rank = codes[i] % RANKS;
+            int suit = codes[i] / RANKS;
+            rankCounts[rank]++;
+            suitCounts[suit]++;
+            suitMasks[suit] |= 1 << rank;
+            rankMask |= 1 << rank;
+        }
+
+        int flushMask = 0;
+        for (int suit = 0; suit < SUITS; suit++) {
+            if (suitCounts[suit] >= HAND_SIZE) {
+                flushMask = suitMasks[suit];
+            }
+        }
+        if (flushMask != 0) {
+            int high = straightHigh(flushMask);
+            if (high >= 0) {
+                return start(HandCategory.STRAIGHT_FLUSH) | slot(high, 0);
+            }
+        }
+
+        // The highest rank held four, three, and two times, and the next highest.
+        int quad = -1;
+        int trip = -1;
+        int secondTrip = -1;
+        int pair = -1;
+        int secondPair = -1;
+        for (int rank = RANKS - 1; rank >= 0; rank--) {
+            int held = rankCounts[rank];
+            if (held == FOUR) {
+                quad = rank;
+            }
+            else if (held == THREE) {
+                if (trip < 0) {
+                    trip = rank;
+                }
+                else if (secondTrip < 0) {
+                    secondTrip = rank;
+                }
+            }
+            else if (held == TWO) {
+                if (pair < 0) {
+                    pair = rank;
+                }
+                else if (secondPair < 0) {
+                    secondPair = rank;
+                }
+            }
+        }
+
+        int result;
+        if (quad >= 0) {
+            result = start(HandCategory.FOUR_OF_A_KIND) | slot(quad, 0)
+                    | kickers(rankMask & ~(1 << quad), 1, 1);
+        }
+        else if (trip >= 0 && (secondTrip >= 0 || pair >= 0)) {
+            result = start(HandCategory.FULL_HOUSE) | slot(trip, 0)
+                    | slot(Math.max(secondTrip, pair), 1);
+        }
+        else if (flushMask != 0) {
+            result = start(HandCategory.FLUSH) | kickers(flushMask, HAND_SIZE, 0);
+        }
+        else if (straightHigh(rankMask) >= 0) {
+            result = start(HandCategory.STRAIGHT) | slot(straightHigh(rankMask), 0);
+        }
+        else if (trip >= 0) {
+            result = start(HandCategory.THREE_OF_A_KIND) | slot(trip, 0)
+                    | kickers(rankMask & ~(1 << trip), 2, 1);
+        }
+        else if (secondPair >= 0) {
+            result = start(HandCategory.TWO_PAIR) | slot(pair, 0) | slot(secondPair, 1)
+                    | kickers(rankMask & ~(1 << pair) & ~(1 << secondPair), 1, 2);
+        }
+        else if (pair >= 0) {
+            result = start(HandCategory.PAIR) | slot(pair, 0)
+                    | kickers(rankMask & ~(1 << pair), THREE, 1);
+        }
+        else {
+            result = start(HandCategory.HIGH_CARD) | kickers(rankMask, HAND_SIZE, 0);
+        }
+        return result;
+    }
+
+    /**
+     * Returns the highest rank of the best straight among the ranks in the
+     * mask, or -1 if there is none. In A-2-3-4-5 the ace is low, so the highest
      * rank is the five.
      */
-    private Rank straightHigh(List<Rank> ordered) {
-        if (ordered.size() != HAND_SIZE) {
-            return null;
+    private int straightHigh(int rankMask) {
+        for (int high = RANKS - 1; high >= HAND_SIZE - 1; high--) {
+            if ((rankMask >> (high - HAND_SIZE + 1) & STRAIGHT_MASK) == STRAIGHT_MASK) {
+                return high;
+            }
         }
-        Rank highest = ordered.get(0);
-        Rank lowest = ordered.get(HAND_SIZE - 1);
-        if (highest.ordinal() - lowest.ordinal() == HAND_SIZE - 1) {
-            return highest;
+        if ((rankMask & WHEEL_MASK) == WHEEL_MASK) {
+            return FIVE_ORDINAL;
         }
-        if (highest == Rank.ACE && ordered.get(1) == Rank.FIVE) {
-            return Rank.FIVE;
+        return -1;
+    }
+
+    private int start(HandCategory category) {
+        return category.ordinal() << CATEGORY_SHIFT;
+    }
+
+    /**
+     * Places a rank in one of the five tie-break positions; position 0 is the
+     * most important. A rank is stored as its ordinal plus one, so that an
+     * empty position is 0.
+     */
+    private int slot(int rank, int position) {
+        return (rank + 1) << (SLOTS - 1 - position) * SLOT_BITS;
+    }
+
+    /**
+     * Places the highest ranks of the mask in consecutive tie-break positions.
+     */
+    private int kickers(int rankMask, int howMany, int firstPosition) {
+        int bits = 0;
+        int position = firstPosition;
+        for (int rank = RANKS - 1; rank >= 0 && position < firstPosition + howMany; rank--) {
+            if ((rankMask & 1 << rank) != 0) {
+                bits |= slot(rank, position);
+                position++;
+            }
         }
-        return null;
+        return bits;
+    }
+
+    private HandValue toHandValue(int score) {
+        HandCategory category = HandCategory.values()[score >>> CATEGORY_SHIFT];
+        List<Rank> tiebreakers = new ArrayList<>();
+        for (int position = 0; position < SLOTS; position++) {
+            int stored = score >>> (SLOTS - 1 - position) * SLOT_BITS & SLOT_MASK;
+            if (stored != 0) {
+                tiebreakers.add(Rank.values()[stored - 1]);
+            }
+        }
+        return new HandValue(category, tiebreakers);
     }
 }
