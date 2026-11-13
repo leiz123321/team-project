@@ -16,8 +16,8 @@ week 7 lecture) and meets the project rubric and timeline.
 | UI | Java Swing desktop application |
 | Build | Maven, Java 11 (as in the current `pom.xml`) |
 | Persistence | Local JSON files |
-| External API | A poker equity / hand-evaluation web API **(decision needed — see §8)** |
-| Team | 2 members |
+| External API | A large language model (LLM) API that plays the computer opponent; provider not chosen **(decision needed — see §8)** |
+| Team | 4 members |
 
 ## 2. How the design maps to course requirements
 
@@ -27,7 +27,7 @@ week 7 lecture) and meets the project rubric and timeline.
 | Diagrams that convey the architecture (rubric; README template "Design Diagrams") | §4, §7.2, §7.3 |
 | Each member leads at least one significant, non-overlapping use case (rubric: Project scope; Milestone 1) | §3 |
 | Core entities designed and implemented (Milestone 1) | §6 |
-| API usage that is motivated by the program (rubric: API usage) | §3 UC5, §8 |
+| API usage that is motivated by the program (rubric: API usage) | §3 UC2, §8 |
 | Data persistence, both saving and loading demonstrated (rubric: Data Persistence) | §3 UC3 and UC4, §8 |
 | SOLID discussion and a design pattern beyond the starter code (rubric: Overall Design, /10) | §10 |
 | One unit test per interactor (Milestone 3); 100% line coverage of Entity and Use Case layers (Milestone 4) | §11 |
@@ -46,9 +46,10 @@ package in `use_case` and `interface_adapter`.
 | UC4 | Review past hands | `view_history` | Review previous games | TBD |
 | UC5 | Calculate equity for a scenario | `calculate_equity` | See the winning chance | TBD |
 
-One possible split for two people, to be agreed: one member leads UC1 + UC2
-(the game loop), the other leads UC3 + UC4 + UC5. Every member must lead at
-least one.
+With four members and four user stories, the proposed split is one user story
+per member: one member leads UC1 + UC2 (the game loop), and the other three
+lead UC3, UC4, and UC5 respectively. Who takes which is to be agreed. Every
+member must lead at least one.
 
 ### UC1 — Start a new hand
 
@@ -80,10 +81,9 @@ least one.
 
 ### UC5 — Calculate equity for a scenario
 
-1. The user enters their hole cards, the opponent's hole cards (or "unknown"), and zero to five community cards.
+1. The user enters their hole cards and zero to five community cards.
 2. If the input is invalid (duplicate card, wrong number of cards), the system tells the user.
-3. Otherwise the system shows the win, tie, and loss probabilities.
-4. If the equity service cannot be reached, the system tells the user and stays usable.
+3. Otherwise the system shows the win, tie, and loss probabilities, based only on the cards the user entered.
 
 ## 4. Layers
 
@@ -109,7 +109,7 @@ flowchart TB
         D["Input / Output Data"]
     end
     subgraph E["Entities (enterprise business rules)"]
-        EN["Card, Deck, Game, HandEvaluator, BotStrategy, ..."]
+        EN["Card, Deck, Game, HandEvaluator, EquityCalculator, BotStrategy, ..."]
     end
     FD --> IA --> UC --> E
     DA --> UC
@@ -137,15 +137,16 @@ src/main/java/
 │   ├── HandCategory.java                 enum: HIGH_CARD ... STRAIGHT_FLUSH
 │   ├── HandValue.java                    comparable strength of a 5-card hand
 │   ├── HandEvaluator.java                best 5 of 7 cards
+│   ├── EquityCalculator.java             chance of winning from the visible cards
 │   ├── Player.java
 │   ├── ActionType.java, Action.java
 │   ├── Street.java                       enum: PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
 │   ├── Game.java                         state and rules of one hand
 │   ├── HandRecord.java                   immutable record of a finished hand
 │   ├── BotProfile.java                   chosen style and its parameters
-│   ├── BotStrategy.java                  interface
-│   ├── DecisionContext.java              what a strategy may look at
-│   └── strategy/                         RandomStrategy, TightStrategy, AggressiveStrategy
+│   ├── DecisionContext.java              what the computer opponent may look at
+│   ├── BotStrategy.java                  interface for the built-in opponent
+│   └── strategy/                         rule-based implementations of BotStrategy
 ├── use_case/
 │   ├── start_hand/
 │   ├── player_action/
@@ -165,7 +166,7 @@ src/main/java/
 │   ├── FileHandHistoryDataAccessObject.java
 │   ├── InMemoryHandHistoryDataAccessObject.java   for tests
 │   ├── FileBotProfileDataAccessObject.java
-│   └── ApiEquityDataAccessObject.java
+│   └── LlmOpponentDataAccessObject.java           calls the LLM API
 └── view/
     ├── ViewManager.java
     ├── MainMenuView.java
@@ -179,8 +180,9 @@ src/test/java/
 └── use_case/<name>/                      one test class per interactor
 ```
 
-Every `use_case/<name>/` package has the same six kinds of file, shown here
-for `player_action`:
+Every `use_case/<name>/` package has the same kinds of file, shown here for
+`player_action`. A use case that stores and loads nothing, such as
+`calculate_equity`, has no data-access interface.
 
 | File | Kind | Role |
 |---|---|---|
@@ -202,17 +204,19 @@ and `exampleclass_use_case` should be deleted once real classes exist, and a
 
 | Entity | Data | Rules it enforces |
 |---|---|---|
-| `Rank`, `Suit` | enum constants | Only 13 ranks and 4 suits exist |
-| `Card` | rank, suit | Immutable; ordering by rank |
+| `Rank`, `Suit` | enum constants | Only 13 ranks and 4 suits exist; ranks are ordered from `TWO` up to `ACE`, suits have no order |
+| `Card` | rank, suit | Immutable; two cards are equal when rank and suit both match. `Card` has no ordering of its own: cards are sorted by comparing `Rank`, and hands are compared through `HandValue` |
 | `Deck` | remaining cards | 52 distinct cards; `shuffle(Random)`; `deal()` removes the top card and fails when empty |
 | `HandValue` | category, tie-break ranks | Total ordering of 5-card hands |
 | `HandEvaluator` | none | Best 5-card hand out of 5 to 7 cards |
-| `Player` | name, stack, hole cards, folded flag | Cannot bet more than the stack; stack never negative |
+| `Player` | name, stack, hole cards, folded flag | Cannot bet more than the stack; stack never negative. Computes its own chance of winning from the cards it can see (its hole cards and the revealed community cards) and from nothing else |
 | `Action` | type, amount | Amount present only for bet and raise |
 | `Game` | deck, two players, board, pot, street, current bet, whose turn, the `BotProfile` in force for this hand | Which actions are legal; minimum raise; when a street ends; who wins the pot |
 | `HandRecord` | id, timestamp, hole cards, board, ordered actions, winner, chip change | Immutable once created |
-| `BotProfile` | strategy name, numeric parameters | Parameters stay inside their allowed ranges |
-| `BotStrategy` | none (interface) | `Action decide(DecisionContext)` returns a legal action |
+| `EquityCalculator` | none | Win, tie, and loss chances given hole cards and revealed community cards; every other card is treated as unknown |
+| `BotProfile` | playing style, numeric parameters | Parameters stay inside their allowed ranges |
+| `DecisionContext` | hole cards, board, pot, amount to call, legal actions, betting so far | Holds only what the computer player can see |
+| `BotStrategy` | none (interface) | The built-in opponent: `Action decide(DecisionContext)` returns a legal action without any network access |
 
 Notes on the entities already in PR #4:
 
@@ -221,11 +225,24 @@ Notes on the entities already in PR #4:
 - `Deck.shuffle` should take a `java.util.Random` so tests can pass a seeded one.
 - `Deck.getCards()` should not expose the internal array.
 
-`DecisionContext` is how the computer opponent stays in the entity layer
-without knowing about the API: the interactor gathers what is needed (hole
-cards, board, pot, amount to call, legal actions, and optionally an equity
-number it obtained through a data-access interface) and passes it in. The
-strategy is then a pure function and easy to test.
+The chance of winning is always computed from one player's point of view, as
+a method of `Player`. It takes the revealed community cards as its argument
+and treats every other card as unknown, so it cannot use the opponent's hole
+cards or cards that have not been dealt. UC5 uses the same method: the
+interactor builds a `Player` holding the hole cards the user entered, together
+with the community cards the user entered, and asks that player for its chance
+of winning. The computation is local and needs no network access.
+
+The method on `Player` is the entry point, `player.winChance(board)`. The
+simulation and hand comparison themselves live in `EquityCalculator`, which the
+method calls, so `Player` stays small and the algorithm can be tested on its own.
+
+The computer opponent has two sources of decisions. The main one is the LLM
+API, reached through an interface that the use case declares (§8). The other
+is the built-in `BotStrategy` in this layer, which needs no network and is
+used when the API is unavailable and in unit tests. Both are given the same
+`DecisionContext`, which the interactor fills with only what the computer
+player can see.
 
 ## 7. Flow of control
 
@@ -235,7 +252,7 @@ strategy is then a pure function and easy to test.
 2. The controller builds `PlayerActionInputData` and calls `PlayerActionInputBoundary.execute`.
 3. `PlayerActionInteractor` gets the current `Game` through `PlayerActionGameDataAccessInterface`. The `Game` carries the `BotProfile` that UC1 loaded when the hand started.
 4. It asks `Game` whether the action is legal. If not, it calls `prepareFailView` and stops.
-5. It applies the action, asks the `BotStrategy` for the reply, applies that, and advances the street if the round is over.
+5. It applies the action, then asks `PlayerActionOpponentDataAccessInterface` for the computer's action. If that call fails, or the returned action is not legal, it asks the built-in `BotStrategy` instead. It applies the computer's action and advances the street if the round is over.
 6. If the hand is over it builds a `HandRecord` and saves it through `PlayerActionHistoryDataAccessInterface`.
 7. It builds `PlayerActionOutputData` and calls `PlayerActionOutputBoundary.prepareSuccessView`.
 8. `PlayerActionPresenter` turns the output data into display strings, updates `PlayerActionState` in the view model, and fires a property change.
@@ -273,11 +290,16 @@ classDiagram
     class PlayerActionInputData
     class PlayerActionOutputData
     class Game
+    class PlayerActionOpponentDataAccessInterface {
+        <<interface>>
+        +decide(DecisionContext, BotProfile) Action
+    }
     class BotStrategy {
         <<interface>>
         +decide(DecisionContext) Action
     }
     class FileHandHistoryDataAccessObject
+    class LlmOpponentDataAccessObject
     class InMemoryGameSessionDataAccessObject
 
     GameTableView --> PlayerActionController
@@ -290,15 +312,18 @@ classDiagram
     PlayerActionInteractor --> PlayerActionHistoryDataAccessInterface
     PlayerActionInteractor ..> PlayerActionOutputData
     PlayerActionInteractor --> Game
+    PlayerActionInteractor --> PlayerActionOpponentDataAccessInterface
     PlayerActionInteractor --> BotStrategy
     PlayerActionPresenter ..|> PlayerActionOutputBoundary
     PlayerActionPresenter --> PlayerActionViewModel
     FileHandHistoryDataAccessObject ..|> PlayerActionHistoryDataAccessInterface
     InMemoryGameSessionDataAccessObject ..|> PlayerActionGameDataAccessInterface
+    LlmOpponentDataAccessObject ..|> PlayerActionOpponentDataAccessInterface
 ```
 
-The four interfaces belong to the use case layer. `PlayerActionPresenter` and
-the two data access objects are outer-layer classes that implement them,
+The five `PlayerAction...` interfaces belong to the use case layer.
+`PlayerActionPresenter` and the three data access objects are outer-layer
+classes that implement them,
 which is where Dependency Inversion keeps the arrows pointing inward.
 
 ### 7.3 Sequence diagram
@@ -311,7 +336,7 @@ sequenceDiagram
     participant Int as PlayerActionInteractor
     participant DAO as Data access
     participant G as Game
-    participant Bot as BotStrategy
+    participant Bot as Opponent (LLM API)
     participant Pres as PlayerActionPresenter
     participant VM as PlayerActionViewModel
 
@@ -323,6 +348,7 @@ sequenceDiagram
     Int->>G: apply(action)
     Int->>Bot: decide(context)
     Bot-->>Int: Action
+    Note over Int,Bot: on failure or an illegal action, the built-in BotStrategy decides
     Int->>G: apply(botAction)
     opt hand is over
         Int->>DAO: saveHandRecord(record)
@@ -343,20 +369,32 @@ class may implement several of them.
 | `InMemoryGameSessionDataAccessObject` | `start_hand`, `player_action` | Holds the current `Game` while the program runs |
 | `FileHandHistoryDataAccessObject` | `player_action` (save), `view_history` (load) | `data/hand_history.json` |
 | `FileBotProfileDataAccessObject` | `configure_bot` (save, load), `start_hand` (load) | `data/bot_profile.json` |
-| `ApiEquityDataAccessObject` | `calculate_equity` | HTTP request to the equity API |
+| `LlmOpponentDataAccessObject` | `player_action` (the computer's decision) | HTTP request to the LLM API |
 | `InMemoryHandHistoryDataAccessObject` | same as the file version | Used in unit tests |
 
 Saving and loading are both visible to the user: hand history survives a
 restart (UC4) and so does the opponent configuration (UC3).
 
-**API (decision needed).** The README names an "equity / poker computer" API
-without a specific service. Before committing to one, the team needs to
-confirm that it is reachable without payment, what its rate limits are, and
-what its request and response formats look like. The architecture does not
-depend on the choice: only `ApiEquityDataAccessObject` knows the URL and the
-JSON format, and it converts the response into plain numbers before returning.
-If no suitable equity API is found, a card-dealing API could supply the
-shuffled deck instead, behind a similar interface.
+**API.** The external API is an LLM that plays the computer opponent. The
+chance of winning is computed locally (§6) and does not use it.
+
+- Only `LlmOpponentDataAccessObject` knows the provider, the URL, the prompt,
+  and the response format. It turns the `DecisionContext` and `BotProfile` into
+  a request and the reply into an `Action`.
+- The request contains only what is in `DecisionContext`, so the model never
+  sees the human's hole cards or undealt cards.
+- The playing style in `BotProfile` (UC3) becomes part of the prompt.
+- The interactor checks the returned action with the same legality check it
+  uses for the human's action. On a failed call, a timeout, or an illegal
+  action, the built-in `BotStrategy` decides instead.
+- The API key is read from an environment variable or a local file that is
+  listed in `.gitignore`; it is never committed. Without a key the program
+  still runs, using the built-in opponent.
+- The request takes noticeable time, so the view must not wait for it on the
+  Swing event thread.
+
+Still to decide: which provider, and whether the course permits LLM APIs
+(to be confirmed with the TA).
 
 **Libraries (decision needed).** `pom.xml` currently has no dependencies.
 Needed: JUnit 5 for tests, a JSON library, and an HTTP client. These may only
@@ -387,17 +425,19 @@ Further rules:
 | Principle | Where it shows in this design |
 |---|---|
 | Single Responsibility | One interactor per use case; presenters only format; `HandEvaluator` only ranks hands |
-| Open/Closed | A new opponent style is a new `BotStrategy` class; `Game` and the interactors are unchanged |
-| Liskov Substitution | Any `BotStrategy`, and the file or in-memory DAO, can be swapped without the interactor noticing |
+| Open/Closed | A different opponent (another LLM provider, a new built-in style) is a new class implementing an existing interface; `Game` and the interactors are unchanged |
+| Liskov Substitution | Any opponent implementation, and the file or in-memory DAO, can be swapped without the interactor noticing |
 | Interface Segregation | Each use case has its own data-access interface with only the methods it uses |
 | Dependency Inversion | Interactors depend on boundaries and data-access interfaces; outer layers implement them |
 
 Design patterns:
 
-- **Strategy** — `BotStrategy` with several implementations, chosen from
-  `BotProfile`. This is the main pattern added beyond the course starter code
-  and is also the clearest extensibility example for the presentation.
-- **Simple factory** — one place that turns a `BotProfile` into a `BotStrategy`.
+- **Strategy** — the computer's decision is behind an interface with
+  interchangeable implementations: the LLM-backed one and the built-in
+  `BotStrategy` classes. This is the main pattern added beyond the course
+  starter code and is also the clearest extensibility example for the
+  presentation.
+- **Simple factory** — one place that turns a `BotProfile` into the built-in `BotStrategy`.
 - **Observer** — views listen to view models through property-change events
   (already part of the course's CA example).
 - **Builder** — `AppBuilder` assembles the application (also in the course example).
@@ -409,15 +449,16 @@ patterns count needs to be checked against the lecture list.
 
 - **Entities**: one JUnit test class per entity. `HandEvaluator` needs a case
   for every hand category and for tie-breaks. `Deck` tests use a seeded `Random`.
-- **Interactors**: one test class per interactor, using the in-memory DAOs and
-  a small test implementation of the output boundary that records what it was
-  given. No Swing, files, or network in these tests.
+- **Interactors**: one test class per interactor, using the in-memory DAOs, a
+  scripted stand-in for the opponent interface, and a small test implementation
+  of the output boundary that records what it was given. No Swing, files, or
+  network in these tests; the LLM is never called from a test.
 - **Target**: at least one test per interactor by Milestone 3; 100% line
   coverage of `entity` and `use_case` by Milestone 4.
 - **Style**: Checkstyle (CheckStyle-IDEA plugin, optionally the Maven plugin)
   run before each pull request. Class names in `UpperCamelCase`.
-- **Pull requests**: one use case, or one layer of one use case, per PR; the
-  other member reviews before merge.
+- **Pull requests**: one use case, or one layer of one use case, per PR; another
+  member reviews before merge.
 
 ## 12. Order of work
 
@@ -432,7 +473,7 @@ patterns count needs to be checked against the lecture list.
 ## 13. Open decisions
 
 1. Which poker variant, and is the match heads-up only?
-2. Which API, after checking access, limits, and formats.
+2. Which LLM provider to use, and confirmation from the TA that an LLM API is allowed.
 3. Who leads which use case.
 4. JSON and HTTP libraries.
 5. Whether `Card` switches to enums before more code depends on it.
