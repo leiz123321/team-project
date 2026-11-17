@@ -177,11 +177,24 @@ The architecture, package layout, and dependency rules are described in
 
 See the class diagram in
 [docs/ARCHITECTURE.md, section 7.2](docs/ARCHITECTURE.md#72-class-diagram-for-one-use-case).
+The class diagram of Use Case 1, the classes of Use Case 2 grouped by layer,
+and the entities they work on are in
+[docs/UC1_UC2.md, section 3](docs/UC1_UC2.md#3-class-diagrams).
 
 ### Sequence Diagrams
 
 See the sequence diagram in
 [docs/ARCHITECTURE.md, section 7.3](docs/ARCHITECTURE.md#73-sequence-diagram).
+Use Case 1 has one of its own, and Use Case 2 one that shows its alternative
+flows, in [docs/UC1_UC2.md, section 4](docs/UC1_UC2.md#4-sequence-diagrams).
+
+### Use Cases 1 and 2 in Full
+
+[docs/UC1_UC2.md](docs/UC1_UC2.md) gives the full specification of Use Case 1
+(Start a new hand) and Use Case 2 (Take a betting action): trigger,
+preconditions, main flow, alternative flows, and postconditions. It also
+holds their use case diagram, class diagrams, sequence diagrams, and the
+state diagrams of a hand and of a card.
 
 ---
 

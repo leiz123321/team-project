@@ -26,7 +26,7 @@ week 7 lecture) and meets the project rubric and timeline.
 | Requirement (source) | Where it is addressed |
 |---|---|
 | Layered design following CA, no Dependency Rule violations (rubric: Clean Architecture, /10) | §4 layers, §5 package layout, §9 dependency rules |
-| Diagrams that convey the architecture (rubric; README template "Design Diagrams") | §4, §7.2, §7.3 |
+| Diagrams that convey the architecture (rubric; README template "Design Diagrams") | §4, §7.2, §7.3, and [UC1_UC2.md](UC1_UC2.md) for UC1 and UC2 |
 | Each member leads at least one significant, non-overlapping use case (rubric: Project scope; Milestone 1) | §3 |
 | Core entities designed and implemented (Milestone 1) | §6 |
 | API usage that is motivated by the program (rubric: API usage) | §3 UC2, §8 |
@@ -353,6 +353,11 @@ The five `PlayerAction...` interfaces belong to the use case layer.
 `PlayerActionPresenter` and the three data access objects are outer-layer
 classes that implement them,
 which is where Dependency Inversion keeps the arrows pointing inward.
+
+The same classes grouped by layer, the class diagram of UC1, and the diagram
+of the entities are in [UC1_UC2.md](UC1_UC2.md), together with the full
+specifications of UC1 and UC2, their sequence diagrams, and the state
+diagrams of a hand and of a card.
 
 ### 7.3 Sequence diagram
 
