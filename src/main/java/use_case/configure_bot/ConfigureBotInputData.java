@@ -13,11 +13,11 @@ public class ConfigureBotInputData {
         this.aggression = aggression;
     }
 
-    String getStyleName() {
+    public String getStyleName() {
         return styleName;
     }
 
-    double getAggression() {
+    public double getAggression() {
         return aggression;
     }
 
