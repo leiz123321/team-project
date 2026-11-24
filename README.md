@@ -54,7 +54,7 @@ so that I can learn which hands are worth playing.
 1. The user chooses to start a hand.
 2. The system shuffles the deck, posts the blinds, and deals two hole cards to each player.
 3. The system shows the user's cards, both players' chips, the pot, and the actions the user may take.
-4. If either player has no chips left, the system reports that the match is over instead.
+4. If either player has fewer chips than the big blind, the match ends before the next deal.
 
 ### Use Case 2: Take a betting action
 
@@ -155,16 +155,11 @@ The computer opponent's chosen playing style and its settings.
 
 ## API Usage
 
-**API Name:** A large language model (LLM) API; provider to be decided
-
-**Documentation:** To be decided
-
-**How it is used in the program:** The API plays the computer opponent. On the
-computer's turn the program sends what the computer player can see (its own
-hole cards, the revealed community cards, the pot, the betting so far, and the
-actions it is allowed to take) together with the playing style chosen in Use
-Case 3, and the API answers with the action to take. If the API cannot be
-reached, a built-in opponent plays instead so the game can always continue.
+During a computer turn, the optional [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)
+receives the opponent's visible cards, legal actions, and playing style. Set
+`ANTHROPIC_API_KEY` in the environment to enable it. With no key or no valid
+reply, the built-in strategy chooses a legal move. The default table uses the
+balanced profile.
 
 ---
 
@@ -187,18 +182,16 @@ See the sequence diagram in
 
 ## How to Run
 
-Requirements: JDK 11 or newer, and Maven (bundled with IntelliJ IDEA).
+Open the project in IntelliJ IDEA as a Maven project with JDK 11 or later.
+Run `app.Main` to open the table. Run `mvn test` from the project root to check the build and tests.
 
-1. Clone the repository and open it in IntelliJ IDEA as a Maven project.
-2. Run `app.Main`.
-
-The application is still under development. The rules of the game, hand
-comparison, and the chance of winning are implemented; the screens and the use
-cases are not, so `app.Main` does not start a playable game yet.
+Choose **New Hand** to deal. Select a betting action and enter an amount for
+a bet or raise. The computer takes its turn automatically. At the end of a
+hand the table shows the result and the game appends the hand to
+`data/hand_history.json`. Choose **New Hand** to keep the same stacks or **New Match** after the match ends.
 
 ---
 
 ## Notes
 
 - Team norms are in [TeamContract.md](TeamContract.md).
-- Screenshots will be added once the user interface exists.
