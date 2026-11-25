@@ -15,6 +15,7 @@ public class ConfigureBotPresenter implements ConfigureBotOutputBoundary{
     public void prepareSuccessView(ConfigureBotOutputData outputData) {
         configureBotViewModel.getState().setStyleName(outputData.getStyleName());
         configureBotViewModel.getState().setAggression(outputData.getAggression());
+        configureBotViewModel.getState().setConfigError("");
         configureBotViewModel.notifySettingsChangeUpdate();
     }
 
