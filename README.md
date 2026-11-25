@@ -5,7 +5,7 @@
 ### Team Members
 - Lei Zhang
 - Qijian Yang
-- Aalim
+- Aalim Mohammed
 - Agrim Rana
 
 ---
