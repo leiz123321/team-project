@@ -21,8 +21,8 @@ public final class DecisionContext {
      *
      * @param holeCards the deciding player's own hole cards
      * @param boardCards the revealed community cards
-     * @param pot the chips in the pot
-     * @param amountToCall the chips the player must add to stay in the hand
+     * @param pot the chips in the pot the deciding player can win after any unmatched excess is returned
+     * @param amountToCall the chips a call costs, capped at the deciding player's stack
      * @param legalActionTypes the kinds of action the player may take
      * @param minWager the smallest total the player may bet or raise to
      * @param maxWager the largest total the player may bet or raise to

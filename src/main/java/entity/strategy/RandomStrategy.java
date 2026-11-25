@@ -1,5 +1,6 @@
 package entity.strategy;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -10,7 +11,9 @@ import entity.DecisionContext;
 
 /**
  * A built-in opponent that picks among the legal actions at random. When it
- * bets or raises, it uses the smallest amount allowed.
+ * bets or raises, it uses the smallest amount allowed. It does not fold when
+ * it may check: giving up a pot that costs nothing to stay in is not a way of
+ * playing, however unpredictable.
  */
 public class RandomStrategy implements BotStrategy {
     private final Random random;
@@ -30,8 +33,11 @@ public class RandomStrategy implements BotStrategy {
 
     @Override
     public Action decide(DecisionContext context) {
-        List<ActionType> legal = context.getLegalActionTypes();
-        ActionType type = legal.get(this.random.nextInt(legal.size()));
+        List<ActionType> choices = new ArrayList<>(context.getLegalActionTypes());
+        if (context.isLegal(ActionType.CHECK)) {
+            choices.remove(ActionType.FOLD);
+        }
+        ActionType type = choices.get(this.random.nextInt(choices.size()));
         return Action.of(type, context.getMinWager());
     }
 }

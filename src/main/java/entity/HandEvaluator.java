@@ -3,6 +3,7 @@ package entity;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Finds the best five-card poker hand among five to seven cards.
@@ -10,7 +11,8 @@ import java.util.List;
  * <p>The strength of a hand is first worked out as a single number, so that
  * comparing two hands is comparing two numbers. {@link #evaluate(List)} turns
  * that number into a {@link HandValue}; code that compares a very large number
- * of hands can use {@link #score(int[], int)} directly.
+ * of hands can use {@link #score(int[], int)} directly. {@link #bestFive(List)}
+ * returns the five cards that make the hand, not only what they are worth.
  */
 public class HandEvaluator {
     private static final int RANKS = 13;
@@ -48,17 +50,88 @@ public class HandEvaluator {
      *         is null, or a card appears twice
      */
     public HandValue evaluate(List<Card> cards) {
+        int[] codes = codesOf(cards);
+        return toHandValue(score(codes, codes.length));
+    }
+
+    /**
+     * Returns the five cards that make the best hand among the given cards:
+     * the hand whose value {@link #evaluate(List)} returns for the same cards.
+     * The state of the cards is ignored.
+     *
+     * <p>More than one choice of five cards can make that hand, because cards
+     * of the same rank can stand in for each other: with two nines and
+     * 8-7-6-5, either nine completes the straight. Of such cards the ones that
+     * come first in the given list are chosen, so the same list always gives
+     * the same five cards.
+     *
+     * @param cards five, six, or seven different cards
+     * @return a new list of the five cards, in the order they have in the
+     *         given list
+     * @throws IllegalArgumentException if the number of cards is wrong, a card
+     *         is null, or a card appears twice
+     */
+    public List<Card> bestFive(List<Card> cards) {
+        int[] codes = codesOf(cards);
+        int count = codes.length;
+        int[] five = new int[HAND_SIZE];
+        int bestChoice = 0;
+        int bestScore = -1;
+        // A choice of five cards is a number whose bits say which cards are in it, the first card
+        // being the highest bit. Where two choices first differ, the larger number has the earlier
+        // card. So counting down, and replacing the best choice only by one that scores higher,
+        // keeps among the choices that score the same the one with the earliest cards.
+        for (int choice = (1 << count) - 1; choice > 0; choice--) {
+            if (Integer.bitCount(choice) == HAND_SIZE) {
+                int filled = 0;
+                for (int i = 0; i < count; i++) {
+                    if (isChosen(choice, i, count)) {
+                        five[filled] = codes[i];
+                        filled++;
+                    }
+                }
+                int choiceScore = score(five, HAND_SIZE);
+                if (choiceScore > bestScore) {
+                    bestScore = choiceScore;
+                    bestChoice = choice;
+                }
+            }
+        }
+        List<Card> best = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            if (isChosen(bestChoice, i, count)) {
+                best.add(cards.get(i));
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Returns whether a choice of cards, written as a number as in
+     * {@link #bestFive(List)}, holds the card at the given place among count cards.
+     */
+    private static boolean isChosen(int choice, int index, int count) {
+        return (choice >> (count - 1 - index) & 1) == 1;
+    }
+
+    /**
+     * Checks the cards and returns the number that stands for each of them, in
+     * the same order.
+     */
+    private static int[] codesOf(List<Card> cards) {
         if (cards == null || cards.size() < HAND_SIZE || cards.size() > MAX_CARDS) {
             throw new IllegalArgumentException("need between 5 and 7 cards");
         }
-        if (cards.contains(null) || new HashSet<>(cards).size() != cards.size()) {
+        // Looked up in a set, because a list that cannot be changed refuses to be asked about null.
+        Set<Card> different = new HashSet<>(cards);
+        if (different.contains(null) || different.size() != cards.size()) {
             throw new IllegalArgumentException("cards must be different and not null");
         }
         int[] codes = new int[cards.size()];
         for (int i = 0; i < codes.length; i++) {
             codes[i] = codeOf(cards.get(i));
         }
-        return toHandValue(score(codes, codes.length));
+        return codes;
     }
 
     /**
