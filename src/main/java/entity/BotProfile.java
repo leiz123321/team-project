@@ -20,7 +20,7 @@ public final class BotProfile {
         if (styleName == null || styleName.isBlank()) {
             throw new IllegalArgumentException("styleName must not be blank");
         }
-        if (aggression < 0.0 || aggression > 1.0) {
+        if (Double.isNaN(aggression) || aggression < 0.0 || aggression > 1.0) {
             throw new IllegalArgumentException("aggression must be between 0 and 1");
         }
         this.styleName = styleName;

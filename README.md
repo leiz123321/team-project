@@ -42,7 +42,7 @@ improve.
 
 ### User Story 4
 
-As a player, I want to enter a specific situation and see my chance of winning
+As a player, I want to input a specific situation and see my chance of winning
 so that I can learn which hands are worth playing.
 
 ---
@@ -94,8 +94,8 @@ of one user story.
 |-------------|--------------|
 | Qijian Yang | Use Case 1: Start a new hand, and Use Case 2: Take a betting action (User Story 1) |
 | Lei Zhang | Use Case 3: Configure the computer opponent (User Story 2) |
-| Aalim | Use Case 4: Review past hands (User Story 3) |
-| Agrim Rana | Use Case 5: Calculate the chance of winning (User Story 4) |
+| Agrim Rana | Use Case 4: Review past hands (User Story 3) |
+| Aalim Mohammed | Use Case 5: Calculate the chance of winning (User Story 4) |
 
 ---
 
