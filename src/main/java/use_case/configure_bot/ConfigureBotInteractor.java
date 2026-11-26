@@ -17,7 +17,9 @@ public class ConfigureBotInteractor implements ConfigureBotInputBoundary{
         if (inputData.getStyleName() == null || inputData.getStyleName().isBlank()) {
             presenter.prepareFailView("styleName cannot be empty");
         }
-        else if (inputData.getAggression() < 0.0 || inputData.getAggression() > 1.0) {
+        else if (Double.isNaN(inputData.getAggression())
+                || inputData.getAggression() < 0.0
+                || inputData.getAggression() > 1.0) {
             presenter.prepareFailView("aggression must be between 0 and 1");
         }
         else {
